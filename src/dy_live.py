@@ -12,6 +12,8 @@ import requests
 import websocket
 import random, hashlib, jsengine
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from playsound import playsound
+from threading import Lock
 from src.utils.ws_send import ws_sender
 from src import live_rank
 from src.utils.common import GlobalVal
@@ -163,10 +165,44 @@ def unPackWebcastChatMessage(data):
     chatMessage.ParseFromString(data)
     data = json_format.MessageToDict(chatMessage, preserving_proto_field_name=True)
     log = json.dumps(data, ensure_ascii=False)
-    logger.info(
-        f'[unPackWebcastChatMessage] [直播间弹幕消息{GlobalVal.commit_num}] [房间Id：' + liveRoomId + '] | ' + log)
+    # logger.info(
+    #     f'[unPackWebcastChatMessage] [直播间弹幕消息{GlobalVal.commit_num}] [房间Id：' + liveRoomId + '] | ' + log)
+    danmuMessage(data["user"]["nickName"], data["content"])
     return data
 
+def danmuMessage(nickName, message):
+    chineseOnly = re.findall(r'[\u4e00-\u9fff]', nickName)
+    chineseName = ''.join(chineseOnly)
+    blackList = [
+        '用户'
+    ]
+    for word in blackList:
+        if word in nickName:
+            chineseName = ''
+    chineseMsgOnly = re.findall(r'[\u4e00-\u9fff]', message)
+    chineseMsg = ''.join(chineseMsgOnly)
+    blackMsgList = [
+        '录播',
+        '软件'
+    ]
+    for word in blackMsgList:
+        if word in message:
+            logger.info(f'出现敏感词{message}')
+            return
+    welcomeMessages1 = [
+        f'{chineseName}说{chineseMsg}',
+        f'{chineseMsg}',
+        f'有朋友说{chineseMsg}'
+    ]
+    welcomeMessage1 = random.choice(welcomeMessages1)
+    welcomeMessages2 = [
+        '都是正品可以放心下单，我们会为您尽快安排发货',
+        '看一看我们的小黄车里有没有你想要的商品，看好了直接下单就可以了'
+    ]
+    welcomeMessage2 = random.choice(welcomeMessages2)
+    message = f'{welcomeMessage1}, {welcomeMessage2}'
+    logger.info(message)
+    playMesssage(message)
 
 # 礼物消息
 def unPackWebcastGiftMessage(data):
@@ -205,9 +241,78 @@ def unPackWebcastMemberMessage(data):
     # 直播间人数统计
     member_num = int(data.get("memberCount", 0))
     log = json.dumps(data, ensure_ascii=False)
-    logger.info(f'[unPackWebcastMemberMessage] [直播间成员加入: {member_num}] [房间Id：' + liveRoomId + '] | ' + log)
+    #logger.info(f'[unPackWebcastMemberMessage] [直播间成员加入: {member_num}] [房间Id：' + liveRoomId + '] | ' + log)
+    # logger.info(f'欢迎 {data["user"]["nickName"]} 来到直播间，看看我们的小黄车有没有你想要的商品')
+    welcomeMessage(data["user"]["nickName"])
     return data
 
+def welcomeMessage(nickName):
+    chineseOnly = re.findall(r'[\u4e00-\u9fff]', nickName)
+    chineseName = ''.join(chineseOnly)
+    blackList = [
+        '用户'
+    ]
+    whiteList = [
+        '小猫干',
+        '珊妮丝'
+    ]
+    for word in blackList:
+        if word in nickName:
+            chineseName = ''
+    for word in whiteList:
+        if word in nickName:
+            logger.info('自己人')
+            return
+    welcomeMessages1 = [
+        '欢迎',
+        f'欢迎{chineseName}',
+        f'欢迎 {chineseName}',
+        f'欢迎 {chineseName} 朋友',
+        '欢迎光临',
+        f'欢迎{chineseName}来到直播间'
+    ]
+    welcomeMessage1 = random.choice(welcomeMessages1)
+    welcomeMessages2 = [
+        '如果您喜欢直播间的产品，赶快点击小黄车下单吧',
+        '喜欢主播的可以点个关注，您的支持就是我们行动的动力哦',
+        '欢迎新粉宝宝来直播间呀',
+        '还没有关注我们的朋友，点击屏幕下方的关注按钮，这样就不会错过任何一场直播啦',
+        '主播今天为大家推荐的商品，有需要的朋友们可以点击屏幕下方的链接进行购买咯',
+        '今天我们带来了各式各样的精美地图和地球仪，让我们一起探索世界吧',
+        '还没有关注我们的朋友们，点击屏幕下方的关注按钮，获取最新地图和地球仪信息，还有不定期的优惠活动哦'
+    ]
+    welcomeMessage2 = random.choice(welcomeMessages2)
+    message = f'{welcomeMessage1}, {welcomeMessage2}'
+    logger.info(message)
+    playMesssage(message)
+
+def chattts(text):
+    res = requests.post('http://127.0.0.1:9966/tts', data={
+        "text": text,
+        "prompt": "",
+        "voice": "5099",
+        "temperature": 0.3,
+        "top_p": 0.7,
+        "top_k": 20,
+        "skip_refine": 0,
+        "custom_voice": 0
+    })
+    return res.json()
+
+playsoundLock = Lock()
+
+def playMesssage(text):
+    global playsoundLock
+    if playsoundLock.locked():
+        logger.info('有锁')
+        return
+    with playsoundLock:
+        response = chattts(text)
+        # 解析返回的json并打印filename
+        if response['code'] == 0:
+            for audio_file in response['audio_files']:
+                print(audio_file['filename'])
+                playsound(audio_file['filename'])
 
 # 点赞
 def unPackWebcastLikeMessage(data):

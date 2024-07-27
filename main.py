@@ -1,4 +1,5 @@
 import logging
+import sys
 from config import LIVE_ROOM_URL
 from src import dy_live
 from src.utils.common import init_global
@@ -15,4 +16,8 @@ if __name__ == '__main__':
     # 推送直播点赞等数据
     send_start()
     # 在config.py配置中修改直播地址: LIVE_ROOM_URL
-    dy_live.parseLiveRoomUrl(LIVE_ROOM_URL)
+    url = LIVE_ROOM_URL
+    args = sys.argv[1:]
+    if len(args) > 0:
+        url = 'https://live.douyin.com/' + args[0]
+    dy_live.parseLiveRoomUrl(url)
